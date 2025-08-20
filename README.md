@@ -91,6 +91,9 @@ node index.js ./sample-postman-collection.json
 # Direct execution with Postman collection and auth token
 node index.js ./sample-postman-collection.json your-auth-token-here
 
+# Direct execution with Postman collection, auth token, and custom baseURL
+node index.js ./sample-postman-collection.json your-auth-token-here https://soffa.api.emaalouf.com/
+
 # Development mode
 npm run dev
 ```

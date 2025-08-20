@@ -10,9 +10,10 @@ const { parsePostmanCollection } = require('./postman-parser');
 const args = process.argv.slice(2);
 const inputFile = args[0] || './routes.js';
 const authToken = args[1] || process.env.AUTH_TOKEN;
+const baseURL = args[2]; // Optional baseURL override
 
 // Load routes from file
-function loadRoutes(filePath) {
+function loadRoutes(filePath, baseURL) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Input file not found: ${filePath}`);
   }
@@ -22,6 +23,21 @@ function loadRoutes(filePath) {
   if (fileExtension === '.json') {
     // Handle JSON files (Postman collections)
     const collection = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    
+    // If baseURL is provided, override the one in the collection
+    if (baseURL) {
+      if (collection.variable && Array.isArray(collection.variable)) {
+        collection.variable = collection.variable.map(variable => {
+          if (variable.key === 'base_url') {
+            return { ...variable, value: baseURL };
+          }
+          return variable;
+        });
+      } else {
+        collection.variable = [{ key: 'base_url', value: baseURL, type: 'string' }];
+      }
+    }
+    
     return parsePostmanCollection(collection);
   } else {
     // Handle JavaScript files (our custom format)
@@ -266,7 +282,10 @@ module.exports = ${JSON.stringify(reportData, null, 2)};
 async function main() {
   try {
     console.log(`Loading routes from: ${inputFile}`);
-    const routes = loadRoutes(inputFile);
+    if (baseURL) {
+      console.log(`Using baseURL override: ${baseURL}`);
+    }
+    const routes = loadRoutes(inputFile, baseURL);
     console.log(`Loaded ${routes.length} routes`);
     
     await executeRoutes(routes, authToken);
