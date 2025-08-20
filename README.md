@@ -5,7 +5,8 @@ A Node.js application for testing HTTP routes with authentication support, detai
 ## Features
 
 - Execute HTTP requests against defined routes
-- Token-based authentication support via environment variables or config file
+- Support for Postman collection JSON files as input
+- Token-based authentication support via command line or environment variables
 - Comprehensive test reporting with success/error categorization
 - Detailed error logging and response time tracking
 - Generates timestamped test reports in JavaScript format
@@ -22,15 +23,21 @@ A Node.js application for testing HTTP routes with authentication support, detai
 
 ### Authentication
 
-The application supports token-based authentication through two methods:
+The application supports token-based authentication through multiple methods:
 
-1. **Environment Variables**:
+1. **Command Line Argument**:
+   Provide the token as the second argument:
+   ```bash
+   node index.js ./routes.js your-auth-token-here
+   ```
+
+2. **Environment Variables**:
    Set the `AUTH_TOKEN` environment variable:
    ```bash
    export AUTH_TOKEN=your-auth-token-here
    ```
 
-2. **Configuration File**:
+3. **Configuration File**:
    Edit the `auth.config.json` file:
    ```json
    {
@@ -40,33 +47,49 @@ The application supports token-based authentication through two methods:
 
 ### Routes Definition
 
-Define your routes in the `routes.js` file using the following format:
+The application supports two formats for defining routes:
 
-```javascript
-module.exports = [
-  {
-    method: 'GET',           // HTTP method
-    url: 'https://example.com/api/endpoint',  // Full URL
-    headers: {               // HTTP headers
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({   // Request body (optional)
-      key: 'value'
-    })
-  }
-];
-```
+1. **Custom JavaScript Format** (`routes.js`):
+   ```javascript
+   module.exports = [
+     {
+       method: 'GET',           // HTTP method
+       url: 'https://example.com/api/endpoint',  // Full URL
+       headers: {               // HTTP headers
+         'Content-Type': 'application/json'
+       },
+       body: JSON.stringify({   // Request body (optional)
+         key: 'value'
+       })
+     }
+   ];
+   ```
+
+2. **Postman Collection Format** (`collection.json`):
+   Export your Postman collection as JSON and use it directly:
+   ```bash
+   node index.js ./postman-collection.json
+   ```
 
 ## Usage
 
 Run the application using one of these commands:
 
 ```bash
-# Using npm
+# Using npm with default routes file
 npm start
 
-# Direct execution
+# Direct execution with default routes file
 node index.js
+
+# Direct execution with custom routes file
+node index.js ./routes.js
+
+# Direct execution with Postman collection
+node index.js ./sample-postman-collection.json
+
+# Direct execution with Postman collection and auth token
+node index.js ./sample-postman-collection.json your-auth-token-here
 
 # Development mode
 npm run dev

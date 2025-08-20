@@ -4,11 +4,30 @@ const http = require('http');
 const url = require('url');
 const fs = require('fs');
 const path = require('path');
-const AuthConfig = require('./auth');
-const routes = require('./routes');
+const { parsePostmanCollection } = require('./postman-parser');
 
-// Initialize authentication
-const authConfig = new AuthConfig();
+// Get command line arguments
+const args = process.argv.slice(2);
+const inputFile = args[0] || './routes.js';
+const authToken = args[1] || process.env.AUTH_TOKEN;
+
+// Load routes from file
+function loadRoutes(filePath) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Input file not found: ${filePath}`);
+  }
+  
+  const fileExtension = path.extname(filePath).toLowerCase();
+  
+  if (fileExtension === '.json') {
+    // Handle JSON files (Postman collections)
+    const collection = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return parsePostmanCollection(collection);
+  } else {
+    // Handle JavaScript files (our custom format)
+    return require(filePath);
+  }
+}
 
 // Test results storage
 const testResults = {
@@ -18,7 +37,7 @@ const testResults = {
 };
 
 // Utility function to make HTTP requests
-function makeRequest(route) {
+function makeRequest(route, authToken) {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
     
@@ -34,10 +53,14 @@ function makeRequest(route) {
       path: parsedUrl.path,
       method: route.method,
       headers: {
-        ...route.headers,
-        ...authConfig.getAuthHeader() // Add authentication headers if configured
+        ...route.headers
       }
     };
+    
+    // Add authentication header if token is provided
+    if (authToken) {
+      options.headers['Authorization'] = `Bearer ${authToken}`;
+    }
     
     // Create request
     const req = client.request(options, (res) => {
@@ -101,23 +124,24 @@ function makeRequest(route) {
 }
 
 // Execute all routes
-async function executeRoutes() {
+async function executeRoutes(routes, authToken) {
   console.log(`Starting route tests at ${testResults.startTime}`);
   console.log(`Total routes to test: ${routes.length}`);
   
-  if (authConfig.isConfigured()) {
-    console.log('Authentication is configured');
+  if (authToken) {
+    console.log('Authentication token provided via command line or environment variable');
   } else {
-    console.log('No authentication configured');
+    console.log('No authentication token provided');
   }
   
   // Execute each route sequentially
   for (let i = 0; i < routes.length; i++) {
     const route = routes[i];
-    console.log(`\nTesting route ${i + 1}/${routes.length}: ${route.method} ${route.url}`);
+    const routeName = route.name || `${route.method} ${route.url}`;
+    console.log(`\nTesting route ${i + 1}/${routes.length}: ${routeName}`);
     
     try {
-      const result = await makeRequest(route);
+      const result = await makeRequest(route, authToken);
       console.log(`  Status: ${result.statusCode} (${result.statusMessage})`);
       console.log(`  Response time: ${result.responseTime}ms`);
     } catch (error) {
@@ -126,11 +150,11 @@ async function executeRoutes() {
   }
   
   // Generate report
-  await generateReport();
+  await generateReport(routes);
 }
 
 // Generate comprehensive test report
-async function generateReport() {
+async function generateReport(routes) {
   const endTime = new Date();
   const duration = endTime - testResults.startTime;
   
@@ -159,7 +183,8 @@ async function generateReport() {
     console.log('\nSUCCESSFUL REQUESTS:');
     console.log('-'.repeat(30));
     testResults.success.forEach((result, index) => {
-      console.log(`${index + 1}. ${result.route.method} ${result.route.url}`);
+      const routeName = result.route.name || `${result.route.method} ${result.route.url}`;
+      console.log(`${index + 1}. ${routeName}`);
       console.log(`   Status: ${result.statusCode} (${result.statusMessage})`);
       console.log(`   Response time: ${result.responseTime}ms`);
     });
@@ -170,7 +195,8 @@ async function generateReport() {
     console.log('\nFAILED REQUESTS:');
     console.log('-'.repeat(30));
     testResults.error.forEach((result, index) => {
-      console.log(`${index + 1}. ${result.route.method} ${result.route.url}`);
+      const routeName = result.route.name || `${result.route.method} ${result.route.url}`;
+      console.log(`${index + 1}. ${routeName}`);
       if (result.error) {
         console.log(`   Error: ${result.error}`);
       } else {
@@ -181,11 +207,11 @@ async function generateReport() {
   }
   
   // Save detailed report to file
-  await saveReportToFile();
+  await saveReportToFile(routes);
 }
 
 // Save detailed report to a file
-async function saveReportToFile() {
+async function saveReportToFile(routes) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const reportFileName = `report_${timestamp}.js`;
   
@@ -198,11 +224,12 @@ async function saveReportToFile() {
       successfulRequests: testResults.success.length,
       failedRequests: testResults.error.length,
       successRate: routes.length > 0 ? (testResults.success.length / routes.length) * 100 : 0,
-      averageResponseTime: routes.length > 0 ? 
+      averageResponseTime: routes.length > 0 ?
         ((testResults.success.reduce((sum, result) => sum + result.responseTime, 0) +
           testResults.error.reduce((sum, result) => sum + (result.responseTime || 0), 0)) / routes.length) : 0
     },
     success: testResults.success.map(result => ({
+      name: result.route.name,
       method: result.route.method,
       url: result.route.url,
       statusCode: result.statusCode,
@@ -211,6 +238,7 @@ async function saveReportToFile() {
       timestamp: result.timestamp
     })),
     error: testResults.error.map(result => ({
+      name: result.route.name,
       method: result.route.method,
       url: result.route.url,
       error: result.error,
@@ -234,8 +262,19 @@ module.exports = ${JSON.stringify(reportData, null, 2)};
   }
 }
 
+// Main execution
+async function main() {
+  try {
+    console.log(`Loading routes from: ${inputFile}`);
+    const routes = loadRoutes(inputFile);
+    console.log(`Loaded ${routes.length} routes`);
+    
+    await executeRoutes(routes, authToken);
+  } catch (error) {
+    console.error('Application error:', error.message);
+    process.exit(1);
+  }
+}
+
 // Run the application
-executeRoutes().catch(error => {
-  console.error('Application error:', error);
-  process.exit(1);
-});
+main();
