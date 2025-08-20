@@ -1,0 +1,4 @@
+{
+  "token": "your-auth-token-here",
+  "description": "This file contains authentication configuration for the route testing application"
+}
